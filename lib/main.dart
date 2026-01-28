@@ -2489,6 +2489,24 @@ class _TallerDetailPageState extends State<TallerDetailPage> {
     );
   }
 
+  // Función helper para normalizar texto sin acentos
+  String _normalizarTexto(String texto) {
+    return texto
+        .replaceAll('á', 'a')
+        .replaceAll('é', 'e')
+        .replaceAll('í', 'i')
+        .replaceAll('ó', 'o')
+        .replaceAll('ú', 'u')
+        .replaceAll('Á', 'A')
+        .replaceAll('É', 'E')
+        .replaceAll('Í', 'I')
+        .replaceAll('Ó', 'O')
+        .replaceAll('Ú', 'U')
+        .replaceAll('ñ', 'n')
+        .replaceAll('Ñ', 'N')
+        .toLowerCase();
+  }
+
   Widget _buildSeccionReparaciones(
     String titulo,
     List<Reparacion> reparaciones,
@@ -2530,8 +2548,8 @@ class _TallerDetailPageState extends State<TallerDetailPage> {
               return true;
             }
             
-            // Buscar por título de reparación
-            if (reparacion.titulo.toLowerCase().contains(queryLower)) {
+            // Buscar por descripción de reparación (sin acentos)
+            if (_normalizarTexto(reparacion.descripcion).contains(_normalizarTexto(queryLower))) {
               return true;
             }
             
@@ -2544,13 +2562,12 @@ class _TallerDetailPageState extends State<TallerDetailPage> {
               return true;
             }
             
-            // Buscar por nombre y teléfono del cliente
+            // Buscar por nombre del cliente
             final cliente = clientes.firstWhere(
               (c) => c.id == telefono.clienteId,
               orElse: () => Cliente(id: -1, nombre: '', telefono: '', direccion: '', email: ''),
             );
-            if (cliente.nombre.toLowerCase().contains(queryLower) ||
-                cliente.telefono.contains(queryLower)) {
+            if (cliente.nombre.toLowerCase().contains(queryLower)) {
               return true;
             }
             
@@ -2570,8 +2587,8 @@ class _TallerDetailPageState extends State<TallerDetailPage> {
             return true;
           }
           
-          // Buscar por título de reparación
-          if (reparacion.titulo.toLowerCase().contains(queryLower)) {
+          // Buscar por descripción de reparación (sin acentos)
+          if (_normalizarTexto(reparacion.descripcion).contains(_normalizarTexto(queryLower))) {
             return true;
           }
           
@@ -2584,13 +2601,12 @@ class _TallerDetailPageState extends State<TallerDetailPage> {
             return true;
           }
           
-          // Buscar por nombre y teléfono del cliente
+          // Buscar por nombre del cliente
           final cliente = clientes.firstWhere(
             (c) => c.id == telefono.clienteId,
             orElse: () => Cliente(id: -1, nombre: '', telefono: '', direccion: '', email: ''),
           );
-          if (cliente.nombre.toLowerCase().contains(queryLower) ||
-              cliente.telefono.contains(queryLower)) {
+          if (cliente.nombre.toLowerCase().contains(queryLower)) {
             return true;
           }
           
@@ -2648,7 +2664,7 @@ class _TallerDetailPageState extends State<TallerDetailPage> {
                     }
                   },
                   decoration: InputDecoration(
-                    hintText: "Buscar por IMEI, teléfono del cliente, nombre o ID...",
+                    hintText: "Buscar por descripción, IMEI, nombre del cliente, ID o fecha...",
                     prefixIcon: const Icon(Icons.search, color: Colors.orange),
                     suffixIcon: searchQuery.isNotEmpty
                         ? IconButton(
@@ -6166,6 +6182,24 @@ class _ReparacionesPageState extends State<ReparacionesPage> {
     super.dispose();
   }
 
+  // Función helper para normalizar texto sin acentos
+  String _normalizarTexto(String texto) {
+    return texto
+        .replaceAll('á', 'a')
+        .replaceAll('é', 'e')
+        .replaceAll('í', 'i')
+        .replaceAll('ó', 'o')
+        .replaceAll('ú', 'u')
+        .replaceAll('Á', 'A')
+        .replaceAll('É', 'E')
+        .replaceAll('Í', 'I')
+        .replaceAll('Ó', 'O')
+        .replaceAll('Ú', 'U')
+        .replaceAll('ñ', 'n')
+        .replaceAll('Ñ', 'N')
+        .toLowerCase();
+  }
+
   List<Map<String, dynamic>> _obtenerTelefonosConMultiplesReparaciones(
     List<Reparacion> reparaciones,
     List<Telefono> telefonos,
@@ -6368,8 +6402,8 @@ class _ReparacionesPageState extends State<ReparacionesPage> {
                             return true;
                           }
                           
-                          // Buscar por título de reparación
-                          if (reparacion.titulo.toLowerCase().contains(queryLower)) {
+                          // Buscar por descripción de reparación (sin acentos)
+                          if (_normalizarTexto(reparacion.descripcion).contains(_normalizarTexto(queryLower))) {
                             return true;
                           }
                           
@@ -6382,13 +6416,12 @@ class _ReparacionesPageState extends State<ReparacionesPage> {
                             return true;
                           }
                           
-                          // Buscar por nombre y teléfono del cliente
+                          // Buscar por nombre del cliente
                           final cliente = clientes.firstWhere(
                             (c) => c.id == telefono.clienteId,
                             orElse: () => Cliente(id: -1, nombre: '', telefono: '', direccion: '', email: ''),
                           );
-                          if (cliente.nombre.toLowerCase().contains(queryLower) ||
-                              cliente.telefono.contains(queryLower)) {
+                          if (cliente.nombre.toLowerCase().contains(queryLower)) {
                             return true;
                           }
                           
@@ -6408,8 +6441,8 @@ class _ReparacionesPageState extends State<ReparacionesPage> {
                           return true;
                         }
                         
-                        // Buscar por título de reparación
-                        if (reparacion.titulo.toLowerCase().contains(queryLower)) {
+                        // Buscar por descripción de reparación (sin acentos)
+                        if (_normalizarTexto(reparacion.descripcion).contains(_normalizarTexto(queryLower))) {
                           return true;
                         }
                         
@@ -6422,13 +6455,12 @@ class _ReparacionesPageState extends State<ReparacionesPage> {
                           return true;
                         }
                         
-                        // Buscar por nombre y teléfono del cliente
+                        // Buscar por nombre del cliente
                         final cliente = clientes.firstWhere(
                           (c) => c.id == telefono.clienteId,
                           orElse: () => Cliente(id: -1, nombre: '', telefono: '', direccion: '', email: ''),
                         );
-                        if (cliente.nombre.toLowerCase().contains(queryLower) ||
-                            cliente.telefono.contains(queryLower)) {
+                        if (cliente.nombre.toLowerCase().contains(queryLower)) {
                           return true;
                         }
                         
@@ -6457,7 +6489,7 @@ class _ReparacionesPageState extends State<ReparacionesPage> {
                             });
                           },
                           decoration: InputDecoration(
-                            hintText: "Buscar por IMEI, teléfono del cliente, nombre, ID o fecha de ingreso...",
+                            hintText: "Buscar por descripción, IMEI, nombre del cliente, ID o fecha de ingreso...",
                             prefixIcon: const Icon(Icons.search, color: Colors.orange),
                             suffixIcon: searchQuery.isNotEmpty
                                 ? IconButton(
