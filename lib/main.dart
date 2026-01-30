@@ -1274,11 +1274,65 @@ class TalleresPage extends StatefulWidget {
 
 class _TalleresPageState extends State<TalleresPage> {
   late Future<List<Taller>> _talleresFuture;
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
 
   @override
   void initState() {
     super.initState();
     _talleresFuture = fetchTalleres();
+    _searchController.addListener(_onSearchChanged);
+  }
+
+  @override
+  void dispose() {
+    _searchController.removeListener(_onSearchChanged);
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _onSearchChanged() {
+    setState(() {
+      _searchQuery = _searchController.text.toLowerCase();
+    });
+  }
+
+  List<Taller> _filtrarTalleres(List<Taller> talleres, String query) {
+    if (query.isEmpty) return talleres;
+    final queryLower = query.toLowerCase().trim();
+    final queryInt = int.tryParse(query.trim());
+    
+    // Si la búsqueda es solo numérica, primero intentar buscar solo por ID exacto
+    if (queryInt != null && query.trim() == queryInt.toString()) {
+      final resultadosExactos = talleres.where((t) {
+        return t.id == queryInt;
+      }).toList();
+      
+      // Si encontramos resultados exactos, devolver solo esos
+      if (resultadosExactos.isNotEmpty) {
+        return resultadosExactos;
+      }
+    }
+    
+    // Si no hay resultados exactos o la búsqueda no es solo numérica, buscar en todos los campos
+    return talleres.where((t) {
+      // Buscar por ID (coincidencia parcial si no es exacto)
+      if (queryInt != null && t.id.toString().contains(queryLower)) {
+        return true;
+      }
+      
+      // Buscar por nombre
+      if (t.nombre.toLowerCase().contains(queryLower)) {
+        return true;
+      }
+      
+      // Buscar por especialidad
+      if (t.especialidad.toLowerCase().contains(queryLower)) {
+        return true;
+      }
+      
+      return false;
+    }).toList();
   }
 
   Future<List<Taller>> fetchTalleres() async {
@@ -2099,10 +2153,88 @@ class _TalleresPageState extends State<TalleresPage> {
             );
           }
 
-          return ListView.builder(
-            itemCount: talleres.length,
+          // Filtrar talleres según la búsqueda
+          final talleresFiltrados = _filtrarTalleres(talleres, _searchQuery);
+
+          return Column(
+            children: [
+              // Barra de búsqueda
+              Container(
+                padding: const EdgeInsets.all(16),
+                color: Colors.black,
+                child: TextField(
+                  controller: _searchController,
+                  decoration: InputDecoration(
+                    hintText: "Buscar por nombre, especialidad o ID...",
+                    prefixIcon: const Icon(Icons.search, color: Colors.orange),
+                    suffixIcon: _searchQuery.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.clear),
+                            onPressed: () {
+                              _searchController.clear();
+                            },
+                          )
+                        : null,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(color: Colors.grey.shade700),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: Colors.orange, width: 2),
+                    ),
+                    filled: true,
+                    fillColor: Colors.grey[900],
+                  ),
+                ),
+              ),
+              // Contador de resultados
+              if (_searchQuery.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Text(
+                    '${talleresFiltrados.length} ${talleresFiltrados.length == 1 ? 'resultado encontrado' : 'resultados encontrados'}',
+                    style: TextStyle(
+                      color: Colors.grey[400],
+                      fontSize: 12,
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                ),
+              // Lista de talleres filtrados
+              if (talleresFiltrados.isEmpty && _searchQuery.isNotEmpty)
+                Expanded(
+                  child: Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.search_off, size: 64, color: Colors.grey[400]),
+                        const SizedBox(height: 16),
+                        Text(
+                          'No se encontraron talleres',
+                          style: TextStyle(
+                            color: Colors.grey[400],
+                            fontSize: 16,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Intenta con otros términos de búsqueda',
+                          style: TextStyle(
+                            color: Colors.grey[500],
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              else
+                Expanded(
+                  child: ListView.builder(
+                    itemCount: talleresFiltrados.length,
             itemBuilder: (context, index) {
-              final taller = talleres[index];
+                      final taller = talleresFiltrados[index];
               return Card(
                 margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 child: ListTile(
@@ -2133,6 +2265,9 @@ class _TalleresPageState extends State<TalleresPage> {
                 ),
               );
             },
+                  ),
+                ),
+            ],
           );
         },
       ),
@@ -2919,11 +3054,44 @@ class _TodasLasEntidadesPageState extends State<TodasLasEntidadesPage> {
   List<Reparacion>? reparaciones;
   bool isLoading = true;
   String? errorMessage;
+  
+  // Maps para controladores y queries de búsqueda por sección
+  final Map<String, TextEditingController> _searchControllers = {};
+  final Map<String, String> _searchQueries = {};
 
   @override
   void initState() {
     super.initState();
     _loadAllData();
+  }
+
+  @override
+  void dispose() {
+    // Limpiar controladores de búsqueda
+    for (var controller in _searchControllers.values) {
+      controller.dispose();
+    }
+    _searchControllers.clear();
+    _searchQueries.clear();
+    super.dispose();
+  }
+
+  // Función helper para normalizar texto sin acentos
+  String _normalizarTexto(String texto) {
+    return texto
+        .replaceAll('á', 'a')
+        .replaceAll('é', 'e')
+        .replaceAll('í', 'i')
+        .replaceAll('ó', 'o')
+        .replaceAll('ú', 'u')
+        .replaceAll('Á', 'A')
+        .replaceAll('É', 'E')
+        .replaceAll('Í', 'I')
+        .replaceAll('Ó', 'O')
+        .replaceAll('Ú', 'U')
+        .replaceAll('ñ', 'n')
+        .replaceAll('Ñ', 'N')
+        .toLowerCase();
   }
 
   Future<void> _loadAllData() async {
@@ -3345,37 +3513,55 @@ class _TodasLasEntidadesPageState extends State<TodasLasEntidadesPage> {
               'Sucursales',
               Icons.store,
               Colors.orange,
-              sucursales?.map((s) => _buildSucursalCard(s)).toList() ?? [],
+              _filtrarSucursales(sucursales ?? [], _searchQueries['Sucursales'] ?? '')
+                  .map((s) => _buildSucursalCard(s))
+                  .toList(),
+              (sucursales ?? []).length,
             ),
             _buildSection(
               'Talleres',
               Icons.hardware,
               Colors.orange,
-              talleres?.map((t) => _buildTallerCard(t)).toList() ?? [],
+              _filtrarTalleres(talleres ?? [], _searchQueries['Talleres'] ?? '')
+                  .map((t) => _buildTallerCard(t))
+                  .toList(),
+              (talleres ?? []).length,
             ),
             _buildSection(
               'Clientes',
               Icons.person,
               Colors.orange,
-              clientes?.map((c) => _buildClienteCard(c)).toList() ?? [],
+              _filtrarClientes(clientes ?? [], _searchQueries['Clientes'] ?? '')
+                  .map((c) => _buildClienteCard(c))
+                  .toList(),
+              (clientes ?? []).length,
             ),
             _buildSection(
               'Técnicos',
               Icons.engineering,
               Colors.orange,
-              tecnicos?.map((t) => _buildTecnicoCard(t)).toList() ?? [],
+              _filtrarTecnicos(tecnicos ?? [], _searchQueries['Técnicos'] ?? '')
+                  .map((t) => _buildTecnicoCard(t))
+                  .toList(),
+              (tecnicos ?? []).length,
             ),
             _buildSection(
               'Teléfonos',
               Icons.phone_android,
               Colors.orange,
-              telefonos?.map((t) => _buildTelefonoCard(t)).toList() ?? [],
+              _filtrarTelefonos(telefonos ?? [], _searchQueries['Teléfonos'] ?? '')
+                  .map((t) => _buildTelefonoCard(t))
+                  .toList(),
+              (telefonos ?? []).length,
             ),
             _buildSection(
               'Reparaciones',
               Icons.build,
               Colors.red,
-              reparaciones?.map((r) => _buildReparacionCard(r)).toList() ?? [],
+              _filtrarReparaciones(reparaciones ?? [], _searchQueries['Reparaciones'] ?? '')
+                  .map((r) => _buildReparacionCard(r))
+                  .toList(),
+              (reparaciones ?? []).length,
             ),
           ],
         ),
@@ -3383,7 +3569,193 @@ class _TodasLasEntidadesPageState extends State<TodasLasEntidadesPage> {
     );
   }
 
-  Widget _buildSection(String title, IconData icon, Color color, List<Widget> children) {
+  // Funciones de filtrado para cada tipo de entidad
+  List<Sucursal> _filtrarSucursales(List<Sucursal> sucursales, String query) {
+    if (query.isEmpty) return sucursales;
+    final queryLower = query.toLowerCase();
+    return sucursales.where((s) {
+      return s.nombre.toLowerCase().contains(queryLower) ||
+          s.direccion.toLowerCase().contains(queryLower) ||
+          s.telefono.contains(queryLower) ||
+          s.id.toString().contains(queryLower);
+    }).toList();
+  }
+
+  List<Taller> _filtrarTalleres(List<Taller> talleres, String query) {
+    if (query.isEmpty) return talleres;
+    final queryLower = query.toLowerCase();
+    return talleres.where((t) {
+      return t.nombre.toLowerCase().contains(queryLower) ||
+          t.especialidad.toLowerCase().contains(queryLower) ||
+          t.id.toString().contains(queryLower);
+    }).toList();
+  }
+
+  List<Cliente> _filtrarClientes(List<Cliente> clientes, String query) {
+    if (query.isEmpty) return clientes;
+    final queryLower = query.toLowerCase().trim();
+    final queryInt = int.tryParse(query.trim());
+    
+    // Si la búsqueda es solo numérica, primero intentar buscar solo por ID exacto
+    if (queryInt != null && query.trim() == queryInt.toString()) {
+      final resultadosExactos = clientes.where((c) {
+        return c.id == queryInt;
+      }).toList();
+      
+      // Si encontramos resultados exactos, devolver solo esos
+      if (resultadosExactos.isNotEmpty) {
+        return resultadosExactos;
+      }
+    }
+    
+    // Si no hay resultados exactos o la búsqueda no es solo numérica, buscar en todos los campos
+    return clientes.where((c) {
+      // Buscar por ID (coincidencia parcial si no es exacto)
+      if (queryInt != null && c.id.toString().contains(queryLower)) {
+        return true;
+      }
+      
+      // Buscar por nombre
+      if (c.nombre.toLowerCase().contains(queryLower)) {
+        return true;
+      }
+      
+      // Buscar por email
+      if (c.email.toLowerCase().contains(queryLower)) {
+        return true;
+      }
+      
+      // Buscar por dirección
+      if (c.direccion.toLowerCase().contains(queryLower)) {
+        return true;
+      }
+      
+      return false;
+    }).toList();
+  }
+
+  List<Tecnico> _filtrarTecnicos(List<Tecnico> tecnicos, String query) {
+    if (query.isEmpty) return tecnicos;
+    final queryLower = query.toLowerCase().trim();
+    final queryInt = int.tryParse(query.trim());
+    
+    // Si la búsqueda es solo numérica, primero intentar buscar solo por ID exacto
+    if (queryInt != null && query.trim() == queryInt.toString()) {
+      final resultadosExactos = tecnicos.where((t) {
+        return t.id == queryInt;
+      }).toList();
+      
+      // Si encontramos resultados exactos, devolver solo esos
+      if (resultadosExactos.isNotEmpty) {
+        return resultadosExactos;
+      }
+    }
+    
+    // Si no hay resultados exactos o la búsqueda no es solo numérica, buscar en todos los campos
+    return tecnicos.where((t) {
+      // Buscar por ID (coincidencia parcial si no es exacto)
+      if (queryInt != null && t.id.toString().contains(queryLower)) {
+        return true;
+      }
+      
+      // Buscar por nombre
+      if (t.nombre.toLowerCase().contains(queryLower)) {
+        return true;
+      }
+      
+      // Buscar por especialidad
+      if (t.especialidad.toLowerCase().contains(queryLower)) {
+        return true;
+      }
+      
+      // Buscar por teléfono
+      if (t.telefono.contains(queryLower)) {
+        return true;
+      }
+      
+      return false;
+    }).toList();
+  }
+
+  List<Telefono> _filtrarTelefonos(List<Telefono> telefonos, String query) {
+    if (query.isEmpty) return telefonos;
+    final queryLower = query.toLowerCase().trim();
+    final queryInt = int.tryParse(query.trim());
+    
+    // Si la búsqueda es solo numérica, primero intentar buscar solo por ID exacto
+    if (queryInt != null && query.trim() == queryInt.toString()) {
+      final resultadosExactos = telefonos.where((t) {
+        return t.id == queryInt;
+      }).toList();
+      
+      // Si encontramos resultados exactos, devolver solo esos
+      if (resultadosExactos.isNotEmpty) {
+        return resultadosExactos;
+      }
+    }
+    
+    // Si no hay resultados exactos o la búsqueda no es solo numérica, buscar en todos los campos
+    return telefonos.where((t) {
+      // Buscar por ID (coincidencia parcial si no es exacto)
+      if (queryInt != null && t.id.toString().contains(queryLower)) {
+        return true;
+      }
+      
+      // Buscar por marca
+      if (t.marca.toLowerCase().contains(queryLower)) {
+        return true;
+      }
+      
+      // Buscar por modelo
+      if (t.modelo.toLowerCase().contains(queryLower)) {
+        return true;
+      }
+      
+      // Buscar por IMEI
+      if (t.imei.toLowerCase().contains(queryLower)) {
+        return true;
+      }
+      
+      return false;
+    }).toList();
+  }
+
+  List<Reparacion> _filtrarReparaciones(List<Reparacion> reparaciones, String query) {
+    if (query.isEmpty) return reparaciones;
+    final queryLower = query.toLowerCase();
+    final queryInt = int.tryParse(query.trim());
+    
+    return reparaciones.where((r) {
+      // Buscar por ID
+      if (queryInt != null && r.id == queryInt) return true;
+      if (r.id.toString().contains(queryLower)) return true;
+      
+      // Buscar por descripción (sin acentos)
+      if (_normalizarTexto(r.descripcion).contains(_normalizarTexto(queryLower))) return true;
+      
+      // Buscar por título
+      if (r.titulo.toLowerCase().contains(queryLower)) return true;
+      
+      // Buscar por estado
+      if (r.estado.toLowerCase().contains(queryLower)) return true;
+      
+      // Buscar por coste
+      if (r.coste.toString().contains(queryLower)) return true;
+      
+      return false;
+    }).toList();
+  }
+
+  Widget _buildSection(String title, IconData icon, Color color, List<Widget> children, int totalRegistros) {
+    // Inicializar controlador de búsqueda si no existe
+    if (!_searchControllers.containsKey(title)) {
+      _searchControllers[title] = TextEditingController();
+      _searchQueries[title] = '';
+    }
+    
+    final searchController = _searchControllers[title]!;
+    final searchQuery = _searchQueries[title] ?? '';
+    
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -3391,7 +3763,10 @@ class _TodasLasEntidadesPageState extends State<TodasLasEntidadesPage> {
           width: double.infinity,
           padding: const EdgeInsets.all(16),
           color: color.withOpacity(0.1),
-          child: Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
             children: [
               Icon(icon, color: color, size: 28),
               const SizedBox(width: 12),
@@ -3405,7 +3780,7 @@ class _TodasLasEntidadesPageState extends State<TodasLasEntidadesPage> {
               ),
               const Spacer(),
               Text(
-                '${children.length}',
+                    '$totalRegistros',
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
@@ -3414,11 +3789,141 @@ class _TodasLasEntidadesPageState extends State<TodasLasEntidadesPage> {
               ),
             ],
           ),
+              const SizedBox(height: 12),
+              // Barra de búsqueda
+              TextField(
+                controller: searchController,
+                onChanged: (value) {
+                  setState(() {
+                    _searchQueries[title] = value;
+                  });
+                },
+                decoration: InputDecoration(
+                  hintText: _getHintTextForSection(title),
+                  prefixIcon: Icon(Icons.search, color: color),
+                  suffixIcon: searchQuery.isNotEmpty
+                      ? IconButton(
+                          icon: const Icon(Icons.clear),
+                          onPressed: () {
+                            searchController.clear();
+                            setState(() {
+                              _searchQueries[title] = '';
+                            });
+                          },
+                        )
+                      : null,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: BorderSide(color: color.withOpacity(0.5)),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: BorderSide(color: color, width: 2),
+                  ),
+                  filled: true,
+                  fillColor: Colors.grey[900],
+                ),
+              ),
+            ],
+          ),
         ),
+        // Mostrar contenido solo si hay búsqueda activa
+        if (searchQuery.isEmpty)
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Center(
+              child: Column(
+                children: [
+                  Icon(
+                    Icons.search,
+                    size: 48,
+                    color: color.withOpacity(0.5),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Usa el buscador para ver los ${title.toLowerCase()}',
+                    style: TextStyle(
+                      color: Colors.grey[400],
+                      fontSize: 14,
+                      fontStyle: FontStyle.italic,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Total: $totalRegistros ${totalRegistros == 1 ? 'registro' : 'registros'}',
+                    style: TextStyle(
+                      color: color.withOpacity(0.7),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          )
+        else ...[
+          // Mostrar contador de resultados cuando hay búsqueda
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Text(
+              '${children.length} ${children.length == 1 ? 'resultado encontrado' : 'resultados encontrados'}',
+              style: TextStyle(
+                color: Colors.grey[400],
+                fontSize: 12,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+          ),
+          // Mostrar solo los resultados de la búsqueda
+          if (children.isEmpty)
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Center(
+                child: Column(
+                  children: [
+                    Icon(
+                      Icons.search_off,
+                      size: 48,
+                      color: Colors.grey[400],
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'No se encontraron resultados',
+                      style: TextStyle(
+                        color: Colors.grey[400],
+                        fontSize: 14,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          else
         ...children,
+        ],
         const SizedBox(height: 16),
       ],
     );
+  }
+
+  String _getHintTextForSection(String title) {
+    switch (title) {
+      case 'Sucursales':
+        return 'Buscar por nombre, dirección, teléfono o ID...';
+      case 'Talleres':
+        return 'Buscar por nombre, especialidad o ID...';
+      case 'Clientes':
+        return 'Buscar por nombre, email, dirección o ID...';
+      case 'Técnicos':
+        return 'Buscar por nombre, especialidad, teléfono o ID...';
+      case 'Teléfonos':
+        return 'Buscar por marca, modelo, IMEI o ID...';
+      case 'Reparaciones':
+        return 'Buscar por descripción, título, estado, coste o ID...';
+      default:
+        return 'Buscar...';
+    }
   }
 
   Widget _buildSucursalCard(Sucursal sucursal) {
@@ -3505,6 +4010,15 @@ class _TodasLasEntidadesPageState extends State<TodasLasEntidadesPage> {
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            Text(
+              'ID: ${cliente.id}',
+              style: TextStyle(
+                color: Colors.orange,
+                fontWeight: FontWeight.bold,
+                fontSize: 14,
+              ),
+            ),
+            const SizedBox(height: 4),
             Text('Teléfono: ${cliente.telefono}'),
             Text('Email: ${cliente.email}'),
           ],
@@ -3767,11 +4281,70 @@ class ClientesPage extends StatefulWidget {
 
 class _ClientesPageState extends State<ClientesPage> {
   late Future<List<Cliente>> _clientesFuture;
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
 
   @override
   void initState() {
     super.initState();
     _clientesFuture = fetchClientes();
+    _searchController.addListener(_onSearchChanged);
+  }
+
+  @override
+  void dispose() {
+    _searchController.removeListener(_onSearchChanged);
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _onSearchChanged() {
+    setState(() {
+      _searchQuery = _searchController.text.toLowerCase();
+    });
+  }
+
+  List<Cliente> _filtrarClientes(List<Cliente> clientes, String query) {
+    if (query.isEmpty) return clientes;
+    final queryLower = query.toLowerCase().trim();
+    final queryInt = int.tryParse(query.trim());
+    
+    // Si la búsqueda es solo numérica, primero intentar buscar solo por ID exacto
+    if (queryInt != null && query.trim() == queryInt.toString()) {
+      final resultadosExactos = clientes.where((c) {
+        return c.id == queryInt;
+      }).toList();
+      
+      // Si encontramos resultados exactos, devolver solo esos
+      if (resultadosExactos.isNotEmpty) {
+        return resultadosExactos;
+      }
+    }
+    
+    // Si no hay resultados exactos o la búsqueda no es solo numérica, buscar en todos los campos
+    return clientes.where((c) {
+      // Buscar por ID (coincidencia parcial si no es exacto)
+      if (queryInt != null && c.id.toString().contains(queryLower)) {
+        return true;
+      }
+      
+      // Buscar por nombre
+      if (c.nombre.toLowerCase().contains(queryLower)) {
+        return true;
+      }
+      
+      // Buscar por email
+      if (c.email.toLowerCase().contains(queryLower)) {
+        return true;
+      }
+      
+      // Buscar por dirección
+      if (c.direccion.toLowerCase().contains(queryLower)) {
+        return true;
+      }
+      
+      return false;
+    }).toList();
   }
 
   Future<List<Cliente>> fetchClientes() async {
@@ -4125,15 +4698,128 @@ class _ClientesPageState extends State<ClientesPage> {
             );
           }
 
+          // Filtrar clientes según la búsqueda
+          final clientesFiltrados = _filtrarClientes(clientes, _searchQuery);
+
           return FutureBuilder<List<Telefono>>(
             future: fetchTelefonos(),
             builder: (context, telefonosSnapshot) {
               final telefonos = telefonosSnapshot.data ?? [];
               
-              return ListView.builder(
-                itemCount: clientes.length,
+              return Column(
+                children: [
+                  // Barra de búsqueda
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    color: Colors.black,
+                    child: TextField(
+                      controller: _searchController,
+                      decoration: InputDecoration(
+                        hintText: "Buscar por nombre, email, dirección o ID...",
+                        prefixIcon: const Icon(Icons.search, color: Colors.orange),
+                        suffixIcon: _searchQuery.isNotEmpty
+                            ? IconButton(
+                                icon: const Icon(Icons.clear),
+                                onPressed: () {
+                                  _searchController.clear();
+                                },
+                              )
+                            : null,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(color: Colors.grey.shade700),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: Colors.orange, width: 2),
+                        ),
+                        filled: true,
+                        fillColor: Colors.grey[900],
+                      ),
+                    ),
+                  ),
+                  // Mostrar contenido solo si hay búsqueda activa
+                  if (_searchQuery.isEmpty)
+                    Expanded(
+                      child: Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.search,
+                              size: 48,
+                              color: Colors.orange.withOpacity(0.5),
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              'Usa el buscador para ver los clientes',
+                              style: TextStyle(
+                                color: Colors.grey[400],
+                                fontSize: 14,
+                                fontStyle: FontStyle.italic,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Total: ${clientes.length} ${clientes.length == 1 ? 'registro' : 'registros'}',
+                              style: TextStyle(
+                                color: Colors.orange.withOpacity(0.7),
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                  else ...[
+                    // Contador de resultados cuando hay búsqueda
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      child: Text(
+                        '${clientesFiltrados.length} ${clientesFiltrados.length == 1 ? 'resultado encontrado' : 'resultados encontrados'}',
+                        style: TextStyle(
+                          color: Colors.grey[400],
+                          fontSize: 12,
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                    ),
+                    // Lista de clientes filtrados
+                    if (clientesFiltrados.isEmpty)
+                      Expanded(
+                        child: Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.search_off, size: 64, color: Colors.grey[400]),
+                              const SizedBox(height: 16),
+                              Text(
+                                'No se encontraron clientes',
+                                style: TextStyle(
+                                  color: Colors.grey[400],
+                                  fontSize: 16,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'Intenta con otros términos de búsqueda',
+                                style: TextStyle(
+                                  color: Colors.grey[500],
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      )
+                    else
+                      Expanded(
+                        child: ListView.builder(
+                          itemCount: clientesFiltrados.length,
                 itemBuilder: (context, index) {
-                  final cliente = clientes[index];
+                            final cliente = clientesFiltrados[index];
                   final telefonosCliente = telefonos.where((t) => t.clienteId == cliente.id).toList();
                   
                   return Card(
@@ -4183,6 +4869,10 @@ class _ClientesPageState extends State<ClientesPage> {
                     ),
                   );
                 },
+                        ),
+                      ),
+                  ],
+                ],
               );
             },
           );
@@ -4202,11 +4892,109 @@ class TecnicosPage extends StatefulWidget {
 
 class _TecnicosPageState extends State<TecnicosPage> {
   late Future<List<Tecnico>> _tecnicosFuture;
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
+  Timer? _debounceTimer;
 
   @override
   void initState() {
     super.initState();
     _tecnicosFuture = fetchTecnicos();
+    _searchController.addListener(_onSearchChanged);
+  }
+
+  @override
+  void dispose() {
+    _debounceTimer?.cancel();
+    _searchController.removeListener(_onSearchChanged);
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _onSearchChanged() {
+    // Cancelar cualquier debounce pendiente
+    _debounceTimer?.cancel();
+    final texto = _searchController.text;
+    
+    // Si está vacío, limpiar inmediatamente solo si había algo antes
+    if (texto.isEmpty) {
+      if (_searchQuery.isNotEmpty) {
+        setState(() {
+          _searchQuery = '';
+        });
+      }
+      return;
+    }
+    
+    // Si tiene menos de 2 caracteres, no hacer nada (no actualizar estado)
+    if (texto.length < 2) {
+      return;
+    }
+    
+    // Solo buscar si tiene al menos 2 caracteres, con debounce de 1200ms
+    _debounceTimer = Timer(const Duration(milliseconds: 1200), () {
+      if (mounted) {
+        final textoActual = _searchController.text;
+        // Verificar nuevamente que tenga al menos 2 caracteres antes de buscar
+        if (textoActual.length >= 2) {
+          final nuevaQuery = textoActual.toLowerCase();
+          // Solo actualizar si cambió realmente
+          if (_searchQuery != nuevaQuery) {
+            setState(() {
+              _searchQuery = nuevaQuery;
+            });
+          }
+        } else if (_searchQuery.isNotEmpty) {
+          // Solo limpiar si había algo antes
+          setState(() {
+            _searchQuery = '';
+          });
+        }
+      }
+    });
+  }
+
+  List<Tecnico> _filtrarTecnicos(List<Tecnico> tecnicos, String query) {
+    if (query.isEmpty) return tecnicos;
+    final queryLower = query.toLowerCase().trim();
+    final queryInt = int.tryParse(query.trim());
+    
+    // Si la búsqueda es solo numérica, primero intentar buscar solo por ID exacto
+    if (queryInt != null && query.trim() == queryInt.toString()) {
+      final resultadosExactos = tecnicos.where((t) {
+        return t.id == queryInt;
+      }).toList();
+      
+      // Si encontramos resultados exactos, devolver solo esos
+      if (resultadosExactos.isNotEmpty) {
+        return resultadosExactos;
+      }
+    }
+    
+    // Si no hay resultados exactos o la búsqueda no es solo numérica, buscar en todos los campos
+    return tecnicos.where((t) {
+      // Buscar por ID (coincidencia parcial si no es exacto)
+      if (queryInt != null && t.id.toString().contains(queryLower)) {
+        return true;
+      }
+      
+      // Buscar por nombre
+      if (t.nombre.toLowerCase().contains(queryLower)) {
+        return true;
+      }
+      
+      // Buscar por especialidad
+      if (t.especialidad.toLowerCase().contains(queryLower)) {
+        return true;
+      }
+      
+      // Buscar por teléfono
+      if (t.telefono.contains(queryLower)) {
+        return true;
+      }
+      
+      return false;
+    }).toList();
   }
 
   Future<List<Tecnico>> fetchTecnicos() async {
@@ -5043,6 +5831,9 @@ class _TecnicosPageState extends State<TecnicosPage> {
             );
           }
 
+          // Filtrar técnicos según la búsqueda
+          final tecnicosFiltrados = _filtrarTecnicos(tecnicos, _searchQuery);
+
           return FutureBuilder<List<dynamic>>(
             future: Future.wait([
               fetchTelefonos(),
@@ -5056,10 +5847,120 @@ class _TecnicosPageState extends State<TecnicosPage> {
               final telefonos = relacionesSnapshot.data?[0] as List<Telefono>? ?? [];
               final talleres = relacionesSnapshot.data?[1] as List<Taller>? ?? [];
               
-              return ListView.builder(
-                itemCount: tecnicos.length,
+              return Column(
+                children: [
+                  // Barra de búsqueda
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    color: Colors.black,
+                    child: TextField(
+                      controller: _searchController,
+                      decoration: InputDecoration(
+                        hintText: "Buscar por nombre, especialidad, teléfono o ID...",
+                        prefixIcon: const Icon(Icons.search, color: Colors.orange),
+                        suffixIcon: _searchQuery.isNotEmpty
+                            ? IconButton(
+                                icon: const Icon(Icons.clear),
+                                onPressed: () {
+                                  _searchController.clear();
+                                },
+                              )
+                            : null,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(color: Colors.grey.shade700),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: Colors.orange, width: 2),
+                        ),
+                        filled: true,
+                        fillColor: Colors.grey[900],
+                      ),
+                    ),
+                  ),
+                  // Mostrar contenido solo si hay búsqueda activa
+                  if (_searchQuery.isEmpty)
+                    Expanded(
+                      child: Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.search,
+                              size: 48,
+                              color: Colors.orange.withOpacity(0.5),
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              'Usa el buscador para ver los técnicos',
+                              style: TextStyle(
+                                color: Colors.grey[400],
+                                fontSize: 14,
+                                fontStyle: FontStyle.italic,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Total: ${tecnicos.length} ${tecnicos.length == 1 ? 'registro' : 'registros'}',
+                              style: TextStyle(
+                                color: Colors.orange.withOpacity(0.7),
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                  else ...[
+                    // Contador de resultados cuando hay búsqueda
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      child: Text(
+                        '${tecnicosFiltrados.length} ${tecnicosFiltrados.length == 1 ? 'resultado encontrado' : 'resultados encontrados'}',
+                        style: TextStyle(
+                          color: Colors.grey[400],
+                          fontSize: 12,
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                    ),
+                    // Lista de técnicos filtrados
+                    if (tecnicosFiltrados.isEmpty)
+                      Expanded(
+                        child: Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.search_off, size: 64, color: Colors.grey[400]),
+                              const SizedBox(height: 16),
+                              Text(
+                                'No se encontraron técnicos',
+                                style: TextStyle(
+                                  color: Colors.grey[400],
+                                  fontSize: 16,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'Intenta con otros términos de búsqueda',
+                                style: TextStyle(
+                                  color: Colors.grey[500],
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      )
+                    else
+                      Expanded(
+                        child: ListView.builder(
+                          itemCount: tecnicosFiltrados.length,
                 itemBuilder: (context, index) {
-                  final tecnico = tecnicos[index];
+                            final tecnico = tecnicosFiltrados[index];
                   // Los teléfonos ya no tienen técnico asignado
                   final telefonosTecnico = <Telefono>[];
                   final taller = talleres.firstWhere(
@@ -5123,6 +6024,10 @@ class _TecnicosPageState extends State<TecnicosPage> {
                     ),
                   );
                 },
+                        ),
+                      ),
+                  ],
+                ],
               );
             },
           );
@@ -5142,11 +6047,109 @@ class TelefonosPage extends StatefulWidget {
 
 class _TelefonosPageState extends State<TelefonosPage> {
   late Future<List<Telefono>> _telefonosFuture;
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
+  Timer? _debounceTimer;
 
   @override
   void initState() {
     super.initState();
     _telefonosFuture = fetchTelefonos();
+    _searchController.addListener(_onSearchChanged);
+  }
+
+  @override
+  void dispose() {
+    _debounceTimer?.cancel();
+    _searchController.removeListener(_onSearchChanged);
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _onSearchChanged() {
+    // Cancelar cualquier debounce pendiente
+    _debounceTimer?.cancel();
+    final texto = _searchController.text;
+    
+    // Si está vacío, limpiar inmediatamente solo si había algo antes
+    if (texto.isEmpty) {
+      if (_searchQuery.isNotEmpty) {
+        setState(() {
+          _searchQuery = '';
+        });
+      }
+      return;
+    }
+    
+    // Si tiene menos de 2 caracteres, no hacer nada (no actualizar estado)
+    if (texto.length < 2) {
+      return;
+    }
+    
+    // Solo buscar si tiene al menos 2 caracteres, con debounce de 1200ms
+    _debounceTimer = Timer(const Duration(milliseconds: 1200), () {
+      if (mounted) {
+        final textoActual = _searchController.text;
+        // Verificar nuevamente que tenga al menos 2 caracteres antes de buscar
+        if (textoActual.length >= 2) {
+          final nuevaQuery = textoActual.toLowerCase();
+          // Solo actualizar si cambió realmente
+          if (_searchQuery != nuevaQuery) {
+            setState(() {
+              _searchQuery = nuevaQuery;
+            });
+          }
+        } else if (_searchQuery.isNotEmpty) {
+          // Solo limpiar si había algo antes
+          setState(() {
+            _searchQuery = '';
+          });
+        }
+      }
+    });
+  }
+
+  List<Telefono> _filtrarTelefonos(List<Telefono> telefonos, String query) {
+    if (query.isEmpty) return telefonos;
+    final queryLower = query.toLowerCase().trim();
+    final queryInt = int.tryParse(query.trim());
+    
+    // Si la búsqueda es solo numérica, primero intentar buscar solo por ID exacto
+    if (queryInt != null && query.trim() == queryInt.toString()) {
+      final resultadosExactos = telefonos.where((t) {
+        return t.id == queryInt;
+      }).toList();
+      
+      // Si encontramos resultados exactos, devolver solo esos
+      if (resultadosExactos.isNotEmpty) {
+        return resultadosExactos;
+      }
+    }
+    
+    // Si no hay resultados exactos o la búsqueda no es solo numérica, buscar en todos los campos
+    return telefonos.where((t) {
+      // Buscar por ID (coincidencia parcial si no es exacto)
+      if (queryInt != null && t.id.toString().contains(queryLower)) {
+        return true;
+      }
+      
+      // Buscar por marca
+      if (t.marca.toLowerCase().contains(queryLower)) {
+        return true;
+      }
+      
+      // Buscar por modelo
+      if (t.modelo.toLowerCase().contains(queryLower)) {
+        return true;
+      }
+      
+      // Buscar por IMEI
+      if (t.imei.toLowerCase().contains(queryLower)) {
+        return true;
+      }
+      
+      return false;
+    }).toList();
   }
 
   int _calcularDuracionEnHoras(Reparacion reparacion) {
@@ -6049,6 +7052,9 @@ class _TelefonosPageState extends State<TelefonosPage> {
             );
           }
 
+          // Filtrar teléfonos según la búsqueda
+          final telefonosFiltrados = _filtrarTelefonos(telefonos, _searchQuery);
+
           return FutureBuilder<List<dynamic>>(
             future: Future.wait([
               fetchClientes(),
@@ -6062,10 +7068,120 @@ class _TelefonosPageState extends State<TelefonosPage> {
               final clientes = relacionesSnapshot.data?[0] as List<Cliente>? ?? [];
               final reparaciones = relacionesSnapshot.data?[1] as List<Reparacion>? ?? [];
 
-              return ListView.builder(
-                itemCount: telefonos.length,
+              return Column(
+                children: [
+                  // Barra de búsqueda
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    color: Colors.black,
+                    child: TextField(
+                      controller: _searchController,
+                      decoration: InputDecoration(
+                        hintText: "Buscar por marca, modelo, IMEI o ID...",
+                        prefixIcon: const Icon(Icons.search, color: Colors.orange),
+                        suffixIcon: _searchQuery.isNotEmpty
+                            ? IconButton(
+                                icon: const Icon(Icons.clear),
+                                onPressed: () {
+                                  _searchController.clear();
+                                },
+                              )
+                            : null,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(color: Colors.grey.shade700),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: Colors.orange, width: 2),
+                        ),
+                        filled: true,
+                        fillColor: Colors.grey[900],
+                      ),
+                    ),
+                  ),
+                  // Mostrar contenido solo si hay búsqueda activa
+                  if (_searchQuery.isEmpty)
+                    Expanded(
+                      child: Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.search,
+                              size: 48,
+                              color: Colors.orange.withOpacity(0.5),
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              'Usa el buscador para ver los teléfonos',
+                              style: TextStyle(
+                                color: Colors.grey[400],
+                                fontSize: 14,
+                                fontStyle: FontStyle.italic,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Total: ${telefonos.length} ${telefonos.length == 1 ? 'registro' : 'registros'}',
+                              style: TextStyle(
+                                color: Colors.orange.withOpacity(0.7),
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                  else ...[
+                    // Contador de resultados cuando hay búsqueda
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      child: Text(
+                        '${telefonosFiltrados.length} ${telefonosFiltrados.length == 1 ? 'resultado encontrado' : 'resultados encontrados'}',
+                        style: TextStyle(
+                          color: Colors.grey[400],
+                          fontSize: 12,
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                    ),
+                    // Lista de teléfonos filtrados
+                    if (telefonosFiltrados.isEmpty)
+                      Expanded(
+                        child: Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.search_off, size: 64, color: Colors.grey[400]),
+                              const SizedBox(height: 16),
+                              Text(
+                                'No se encontraron teléfonos',
+                                style: TextStyle(
+                                  color: Colors.grey[400],
+                                  fontSize: 16,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'Intenta con otros términos de búsqueda',
+                                style: TextStyle(
+                                  color: Colors.grey[500],
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      )
+                    else
+                      Expanded(
+                        child: ListView.builder(
+                          itemCount: telefonosFiltrados.length,
                 itemBuilder: (context, index) {
-                  final telefono = telefonos[index];
+                            final telefono = telefonosFiltrados[index];
                   final cliente = clientes.firstWhere(
                     (c) => c.id == telefono.clienteId,
                     orElse: () => Cliente(id: -1, nombre: 'No encontrado', telefono: '', direccion: '', email: ''),
@@ -6143,6 +7259,10 @@ class _TelefonosPageState extends State<TelefonosPage> {
                     ),
                   );
                 },
+                        ),
+                      ),
+                  ],
+                ],
               );
             },
           );
